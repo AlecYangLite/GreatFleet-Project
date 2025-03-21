@@ -1,0 +1,202 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "colab": {
+      "provenance": [],
+      "authorship_tag": "ABX9TyNnIW7xTeZHPFhPxW1Vg/8w",
+      "include_colab_link": true
+    },
+    "kernelspec": {
+      "name": "python3",
+      "display_name": "Python 3"
+    },
+    "language_info": {
+      "name": "python"
+    }
+  },
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "view-in-github",
+        "colab_type": "text"
+      },
+      "source": [
+        "<a href=\"https://colab.research.google.com/github/AlecYangLite/GreatFleet-Project/blob/main/Reg_5_Factor_Gold_Price_Monitoring\" target=\"_parent\"><img src=\"https://colab.research.google.com/assets/colab-badge.svg\" alt=\"Open In Colab\"/></a>"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 2,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "YEsDLzUtvDX7",
+        "outputId": "5cd28540-4233-4232-f509-4e54da909e20"
+      },
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stderr",
+          "text": [
+            "[*********************100%***********************]  1 of 1 completed\n",
+            "[*********************100%***********************]  1 of 1 completed\n",
+            "[*********************100%***********************]  1 of 1 completed\n",
+            "[*********************100%***********************]  1 of 1 completed\n",
+            "[*********************100%***********************]  1 of 1 completed\n"
+          ]
+        },
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "📊 黄金价格合理性监控结果:\n",
+            "今日黄金现价: 3040.00 USD\n",
+            "模型计算合理价格: 2444.93 USD\n",
+            "偏离百分比: 24.34%\n",
+            "系统建议: ⚠ 当前价格偏高，建议谨慎或逢高减仓。\n"
+          ]
+        },
+        {
+          "output_type": "stream",
+          "name": "stderr",
+          "text": [
+            "/usr/local/lib/python3.11/dist-packages/sklearn/utils/validation.py:2732: UserWarning: X has feature names, but LinearRegression was fitted without feature names\n",
+            "  warnings.warn(\n"
+          ]
+        }
+      ],
+      "source": [
+        " import yfinance as yf\n",
+        "import pandas as pd\n",
+        "from datetime import datetime\n",
+        "import numpy as np\n",
+        "from sklearn.linear_model import LinearRegression\n",
+        "\n",
+        "# 1️⃣ 获取多因子数据\n",
+        "start_date = \"2015-01-01\"\n",
+        "today = datetime.today().strftime('%Y-%m-%d')\n",
+        "\n",
+        "# 下载历史数据\n",
+        "gc = yf.download('GC=F', start=start_date, end=today)[['Close']].rename(columns={'Close': 'GC=F'})\n",
+        "dxy = yf.download('DX-Y.NYB', start=start_date, end=today)[['Close']].rename(columns={'Close': 'DXY'})\n",
+        "vix = yf.download('^VIX', start=start_date, end=today)[['Close']].rename(columns={'Close': 'VIX'})\n",
+        "sp500 = yf.download('^GSPC', start=start_date, end=today)[['Close']].rename(columns={'Close': 'SP500'})\n",
+        "tip = yf.download('TIP', start=start_date, end=today)[['Close']].rename(columns={'Close': 'TIP'})  # CPI Proxy\n",
+        "\n",
+        "# 合并成多因子 DataFrame\n",
+        "data = gc.join([tip, dxy, vix, sp500], how='inner').dropna()\n",
+        "\n",
+        "# 2️⃣ 构建回归模型（用历史数据拟合合理价格）\n",
+        "X = data[['TIP', 'DXY', 'VIX', 'SP500']]\n",
+        "y = data['GC=F']\n",
+        "reg_model = LinearRegression().fit(X, y)\n",
+        "\n",
+        "# 3️⃣ 获取今日最新因子值\n",
+        "latest_factors = pd.DataFrame({\n",
+        "    'TIP': [tip.iloc[-1, 0]],\n",
+        "    'DXY': [dxy.iloc[-1, 0]],\n",
+        "    'VIX': [vix.iloc[-1, 0]],\n",
+        "    'SP500': [sp500.iloc[-1, 0]]\n",
+        "})\n",
+        "\n",
+        "# 4️⃣ 计算今日合理价格\n",
+        "today_fair_price = reg_model.predict(latest_factors)[0].item()\n",
+        "today_actual_price = gc.iloc[-1, 0]\n",
+        "\n",
+        "# 5️⃣ 计算偏离百分比\n",
+        "deviation_pct = ((today_actual_price - today_fair_price) / today_fair_price) * 100\n",
+        "\n",
+        "# 6️⃣ 系统自动建议\n",
+        "if deviation_pct > 3:\n",
+        "    suggestion = \"⚠ 当前价格偏高，建议谨慎或逢高减仓。\"\n",
+        "elif deviation_pct < -3:\n",
+        "    suggestion = \"✅ 当前价格偏低，考虑逢低布局。\"\n",
+        "else:\n",
+        "    suggestion = \"✔ 当前价格合理，建议观望。\"\n",
+        "\n",
+        "# 7️⃣ 输出结果\n",
+        "print(\"📊 黄金价格合理性监控结果:\")\n",
+        "print(f\"今日黄金现价: {today_actual_price:.2f} USD\")\n",
+        "print(f\"模型计算合理价格: {today_fair_price:.2f} USD\")\n",
+        "print(f\"偏离百分比: {deviation_pct:.2f}%\")\n",
+        "print(f\"系统建议: {suggestion}\")\n"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "from sklearn.metrics import mean_squared_error, r2_score\n",
+        "\n",
+        "# 模型在训练集上的预测\n",
+        "y_pred = reg_model.predict(X)\n",
+        "\n",
+        "# R²\n",
+        "r2 = r2_score(y, y_pred)\n",
+        "\n",
+        "# 调整后的 R²\n",
+        "n = X.shape[0]\n",
+        "k = X.shape[1]\n",
+        "adj_r2 = 1 - (1 - r2) * (n - 1) / (n - k - 1)\n",
+        "\n",
+        "# 均方误差 (MSE)\n",
+        "mse = mean_squared_error(y, y_pred)\n",
+        "rmse = np.sqrt(mse)\n",
+        "\n",
+        "# 残差标准差\n",
+        "residuals = y - y_pred\n",
+        "residual_std = np.std(residuals.values)\n",
+        "\n",
+        "# 回归系数\n",
+        "coefficients = pd.Series(reg_model.coef_.ravel(), index=X.columns)\n",
+        "\n",
+        "\n",
+        "# 截距\n",
+        "intercept = reg_model.intercept_.item()\n",
+        "\n",
+        "# 打印模型评估结果\n",
+        "print(\"📊 回归模型评估结果：\")\n",
+        "print(f\"R²: {r2:.4f}\")\n",
+        "print(f\"调整后的 R²: {adj_r2:.4f}\")\n",
+        "print(f\"均方误差 (MSE): {mse:.2f}\")\n",
+        "print(f\"RMSE: {rmse:.2f}\")\n",
+        "print(f\"残差标准差: {residual_std:.2f}\")\n",
+        "print(f\"截距: {intercept:.2f}\")\n",
+        "print(\"回归系数:\")\n",
+        "print(coefficients)\n"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "JvQpqQZg6Ju-",
+        "outputId": "30d77497-5c60-4817-e70b-28dc8253358e"
+      },
+      "execution_count": 6,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "📊 回归模型评估结果：\n",
+            "R²: 0.9075\n",
+            "调整后的 R²: 0.9074\n",
+            "均方误差 (MSE): 16910.60\n",
+            "RMSE: 130.04\n",
+            "残差标准差: 130.04\n",
+            "截距: 369.15\n",
+            "回归系数:\n",
+            "Price  Ticker  \n",
+            "TIP    TIP        -2.929053\n",
+            "DXY    DX-Y.NYB    1.541123\n",
+            "VIX    ^VIX        7.759006\n",
+            "SP500  ^GSPC       0.368183\n",
+            "dtype: float64\n"
+          ]
+        }
+      ]
+    }
+  ]
+}
